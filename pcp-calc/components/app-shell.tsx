@@ -90,8 +90,8 @@ function Shell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-full flex-col">
-      <header className="sticky top-0 z-20 border-b border-line bg-bg/95 backdrop-blur">
-        <div className="mx-auto flex max-w-4xl items-center justify-between gap-3 px-4 py-3">
+      <header className="safe-top sticky top-0 z-20 border-b border-line bg-bg/95 backdrop-blur">
+        <div className="safe-px mx-auto flex max-w-4xl items-center justify-between gap-3 py-3">
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold tracking-wide text-fg">
               PCP Ballistic Calculator
@@ -115,7 +115,7 @@ function Shell({ children }: { children: ReactNode }) {
             {native ? "on device" : online ? "online" : "offline"}
           </span>
         </div>
-        <nav className="mx-auto hidden max-w-4xl gap-1 px-4 pb-2 md:flex">
+        <nav className="safe-px mx-auto hidden max-w-4xl gap-1 pb-2 md:flex">
           {TABS.map((tab) => (
             <Link
               key={tab.href}
@@ -130,19 +130,20 @@ function Shell({ children }: { children: ReactNode }) {
         </nav>
       </header>
 
-      <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-4">{children}</main>
+      <main className="safe-px mx-auto w-full max-w-4xl flex-1 py-4">{children}</main>
 
       <nav
         className="safe-bottom sticky bottom-0 z-20 border-t border-line bg-bg/95 backdrop-blur md:hidden"
         aria-label="Sections"
       >
-        <div className="mx-auto grid max-w-4xl grid-cols-4 gap-1 px-2 pt-2">
+        <div className="safe-px mx-auto grid max-w-4xl grid-cols-4 gap-1 pt-2">
           {TABS.map((tab) => (
             <Link
               key={tab.href}
               href={tab.href}
+              title={tab.label}
               aria-current={activePath === normalizePath(tab.href) ? "page" : undefined}
-              className={`min-h-11 rounded-xl px-2 text-center text-xs font-medium ${
+              className={`flex min-h-12 items-center justify-center rounded-xl px-2 text-center text-sm font-medium leading-tight ${
                 activePath === normalizePath(tab.href) ? "bg-accent text-accent-fg" : "text-muted hover:text-fg"
               }`}
             >

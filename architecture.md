@@ -919,6 +919,20 @@ Verified on an API 36.1 emulator, debug and release builds both:
 - tab navigation is client-side, not a document reload;
 - `dumpsys package` reports no requested permissions.
 
+**Edge-to-edge and the status bar.** `targetSdk` 36 means Android draws the app behind the status bar
+and the gesture bar whether the app wants it or not; `viewport-fit=cover` in the viewport meta then
+tells Capacitor's `SystemBars` plugin to hand those insets to CSS instead of padding the WebView, so
+the WebView really is fullscreen. The page has to reserve the bar itself, and it does: `.safe-top`,
+`.safe-bottom` and `.safe-px` in `app/globals.css` pad the sticky header, the tab bar and the content
+by the inset, so the header's blurred background keeps painting *under* the clock and battery icons
+while its text sits *below* them. The padding reads `var(--safe-area-inset-top, env(safe-area-inset-top,
+0px))` in that order on purpose: Capacitor injects `0px` when it has already padded the WebView
+natively (Chromium WebView below 140, where `env()` is still broken), and `env()` would reserve the
+strip a second time there. `initialViewportFitValueHint: "cover"` in `capacitor.config.ts` tells
+Capacitor the meta value up front, which removes the launch flash where the WebView is padded for a
+bar it then removes. Status bar icon colours follow the system night mode, which is the same signal
+the CSS tokens use, so no `SystemBars.style` is set.
+
 **Signing.** `assembleRelease` signs with `android/release.keystore` when `android/keystore.properties`
 exists; otherwise it falls back to the debug key so the build is still installable. Both are
 gitignored. A debug-signed install cannot be upgraded to a release-signed one — Android rejects the

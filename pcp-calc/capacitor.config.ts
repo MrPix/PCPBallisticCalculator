@@ -24,6 +24,23 @@ const config: CapacitorConfig = {
     webContentsDebuggingEnabled: false,
   },
 
+  plugins: {
+    SystemBars: {
+      /**
+       * The viewport meta in `app/layout.tsx` always says `viewport-fit=cover`,
+       * which is what asks Capacitor to let the WebView run edge-to-edge and hand
+       * the insets to CSS (`env(safe-area-inset-*)` / the `--safe-area-inset-*`
+       * variables `app/globals.css` reads).
+       *
+       * Without this hint Capacitor has to read the meta tag out of the loaded
+       * page before it knows that, and the first insets pass pads the WebView for
+       * a status bar it then removes - a visible jump at launch. Telling it up
+       * front makes the first layout the final one.
+       */
+      initialViewportFitValueHint: "cover",
+    },
+  },
+
   loggingBehavior: "debug",
 };
 

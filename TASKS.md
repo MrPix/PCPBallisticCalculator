@@ -103,6 +103,12 @@ API 36.1 emulator in airplane mode (renders, persists across a cold restart, req
       a cache could only go stale after an app update); `on device` pill instead of `online`/`offline`
       (`navigator.onLine` reported *online* in airplane mode in a WebView); `INTERNET` permission
       removed from `AndroidManifest.xml`; WebView debugging off in release builds.
+- [x] **Fullscreen without the status bar eating the header.** The app is edge-to-edge (targetSdk 36
+      forces it, `viewport-fit=cover` hands the insets to CSS), which had the header title sitting *under*
+      the clock, battery and notification icons. `.safe-top` / `.safe-px` in `app/globals.css` now pad
+      the header, tab bar and content by the inset: the bar keeps its fullscreen look, the text moves
+      below it. `initialViewportFitValueHint: "cover"` kills the launch layout jump. Rationale:
+      `architecture.md` §10.6.
 - [x] Launcher icon and splash cut from the project's own artwork: `npm run icons` writes `assets/`,
       `@capacitor/assets` generates the mipmaps/adaptive icon/splash at every density.
 - [~] **Hosting recipe for a phone over LAN** — the Android half is now solved without needing a

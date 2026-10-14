@@ -105,6 +105,47 @@ input.no-spin::-webkit-inner-spin-button {
   margin: 0;
 }
 
+/* ------------------------------------------------------------------ *
+ * Safe areas.
+ *
+ * The APK is edge-to-edge: targetSdk 36 forces it, and `viewport-fit=cover`
+ * in the viewport meta tells Capacitor's SystemBars plugin to hand the insets
+ * to the page instead of padding the WebView. That is what makes the app run
+ * fullscreen - and it is also what puts the header under the clock, the
+ * battery icon and the notification icons unless the page reserves that strip
+ * itself. So the fullscreen look stays and the content moves below the bar.
+ *
+ * Two sources report the same numbers, and which one is live depends on where
+ * the page is running:
+ *   var(--safe-area-inset-*)   - injected on <html> by Capacitor (the APK)
+ *   env(safe-area-inset-*)     - native, Chromium WebView 140+ and browsers
+ * The fallback order matters: Capacitor injects 0px when it has already padded
+ * the WebView natively (older WebViews), and `env()` would still report the
+ * inset there, which would reserve the space twice. Reading the injected value
+ * first, and `env()` only when no injection happened, is correct in both
+ * branches. In a browser tab neither is set to anything real, so these rules
+ * cost nothing on the web build.
+ * ------------------------------------------------------------------ */
+:root {
+  --safe-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --safe-right: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
+  --safe-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+  --safe-left: var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
+}
+
+/* Sticky header: the bar's own background keeps painting under the status bar,
+   only its contents drop below it. */
+.safe-top {
+  padding-top: calc(0.75rem + var(--safe-top));
+}
+
 .safe-bottom {
-  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.5rem);
+  padding-bottom: calc(0.5rem + var(--safe-bottom));
+}
+
+/* A cutout sits on the left or right edge in landscape, so the horizontal
+   insets are not decoration. Replaces the element's own 1rem side padding. */
+.safe-px {
+  padding-left: calc(1rem + var(--safe-left));
+  padding-right: calc(1rem + var(--safe-right));
 }
