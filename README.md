@@ -4,16 +4,17 @@ Hold-over calculator for a PCP air rifle, built around **measurements from your 
 than catalogue ballistic coefficients you do not have.
 
 Current load: **.177 (4.52 mm) · 1.00 g slug · 280 m/s · zeroed at 50 m**.
-The ballistic coefficient was fitted from an 8-point drop table shot at +15 °C / 998 kPa / 63 % RH.
+The ballistic coefficient was fitted from an 8-point drop table shot at +15 °C / 998 hPa / 63 % RH,
+with a **calipered sight height of 70 mm** (Settings → Rifle and scope).
 
 **The calculator shows your measured hold-over, not the model's.** At 100 m it shows **−2.90 mrad**
-(your measurement), with the model's −3.21 mrad shown beside it. Read
+(your measurement), with the model's −3.02 mrad shown beside it. Read
 [Why the model cannot match your drop table](#why-the-model-cannot-match-your-drop-table) for why.
 
 - Runs entirely in the browser — no backend, no database, no account.
 - Works offline once opened; installable to a phone or tablet home screen (PWA).
 - Responsive: bottom tab bar on a phone, top nav on a tablet/desktop, big tabular numbers.
-- Physics, calibration and the measured card are covered by **144 unit tests** (Vitest).
+- Physics, calibration and the measured card are covered by **146 unit tests** (Vitest).
 
 Docs: **[architecture.md](architecture.md)** — how it works and why it is built this way ·
 **[TASKS.md](TASKS.md)** — what is done and what is next.
@@ -38,7 +39,7 @@ npm run start        # serves ./out at http://localhost:3000 (convenience server
 Checks:
 
 ```bash
-npm test             # 8 files / 118 tests, ~2 s
+npm test             # 9 files / 146 tests, ~2 s
 npm run test:watch
 npx eslint .
 ```
@@ -50,7 +51,7 @@ npx eslint .
 | Screen | What you do there |
 |---|---|
 | **Calculator** | Type, slide or tap a distance → hold-over in mrad (or MOA), turret clicks, velocity, energy, time of flight, Mach, trajectory chart and a drop table. Hold-over comes from your measured card, corrected to today's air; the raw model sits beside it. Weather is editable here. |
-| **Bullets** | Add / edit / duplicate / delete bullets. Each bullet carries its own mass, caliber, fitted BC, muzzle velocity, sight height and zero. JSON backup export and import. |
+| **Bullets** | Add / edit / duplicate / delete bullets. Each bullet carries its own mass, caliber, fitted BC, muzzle velocity and zero. JSON backup export and import. Sight height is deliberately **not** here — it belongs to the rifle, not the pellet. |
 | **Calibrate** | Enter measured drops (or a chronograph velocity pair) → fit the BC → apply it. Save the drop list as the measured card the calculator uses. Shows residuals and fit quality. |
 | **Settings** | **Rifle and scope (sight height)**, units (metric/imperial, mrad/MOA, hPa/kPa/mmHg/inHg/psi, °C/°F), **hold-over source** (measured card vs physics model), turret click value, drop-table distances, maximum range. |
 
@@ -58,8 +59,9 @@ npx eslint .
 
 ## Why the model cannot match your drop table
 
-You measured **−2.9 mrad at 100 m**. The fitted model says **−3.21 mrad**. That gap is real, and it is
-not a bug in the arithmetic — it is a property of your data.
+You measured **−2.9 mrad at 100 m**. The fitted model says **−3.02 mrad** (it said −3.21 before the
+sight height was measured — see the table below). That gap is real, and it is not a bug in the
+arithmetic — it is a property of your data.
 
 Beyond the zero, angular drop must get **more negative at an increasing rate**: each 25 m step must
 drop more than the previous one. That is true of every trajectory in this model family — a test scans
@@ -154,7 +156,7 @@ Fit quality is printed, not assumed: **RMS under ~0.5 mrad** means the model mat
 
 ## Your range test, as fitted
 
-Input: `+15 °C`, `63 % RH`, `998 kPa`, `280 m/s`, zero 50 m, **sight height 70 mm (calipered)**.
+Input: `+15 °C`, `63 % RH`, `998 hPa`, `280 m/s`, zero 50 m, **sight height 70 mm (calipered)**.
 
 Fitted: **BC = 352.8 kg/m²**, implied **Cd = 0.177**, air density **1.2017 kg/m³**, launch angle
 4.71 mrad, first zero 20.6 m, apex +1.5 cm at 35.4 m.
@@ -211,9 +213,10 @@ you import the file.
 
 Point mass with quadratic drag: deceleration `ρ·v² / (2·BC)`, where `ρ` is air density computed from
 temperature, pressure and humidity (CIPAC-style ideal-gas mixture) and `BC = mass / (Cd · area)` in
-kg/m². The launch angle is solved so the trajectory crosses the sight line exactly at your zero
-distance, then integrated with 4th-order Runge-Kutta at a 5 cm distance step (converged to well under
-0.1 mrad at 200 m). Angular drop is `y / x · 1000` mrad, positive above the point of aim. On top of
+kg/m². The muzzle starts `h` **below** the sight line, where `h` is your sight height (bore centre →
+scope centre, Settings → Rifle and scope, 70 mm here). The launch angle is solved so the trajectory
+crosses the sight line exactly at your zero distance, then integrated with 4th-order Runge-Kutta at a
+5 cm distance step (converged to well under 0.1 mrad at 200 m). Angular drop is `y / x · 1000` mrad, positive above the point of aim. On top of
 that sits your measured card: `hold-over(d) = model_today(d) + [measured(d) − model_atCardWeather(d)]`,
 so the number you dial is your measurement corrected to today's air rather than the model's estimate.
 Full derivation, validity limits and what is deliberately not modelled (wind, inclined shots, transonic
@@ -249,12 +252,15 @@ drag) are in [architecture.md](architecture.md).
 npm test
 ```
 
-144 tests across 9 files. They check physical invariants rather than snapshots: ISA air density from
+146 tests across 9 files. They check physical invariants rather than snapshots: ISA air density from
 first principles, moist air being lighter than dry air, the vacuum identity `v² − (gt)² = v0²`, the
 closed-form quadratic-drag decay `v = v0·e^(−kx)`, integrator step-size convergence, BC recovery from
-synthetic data, single-range recalibration, storage sanitisation and the v1→v2 migration, the convexity
-of angular drop (which your measured table violates and every physical trajectory obeys), and a
-regression test against your measured drop table.
+synthetic data, single-range recalibration, storage sanitisation and the v1→v2→v3 migrations (the last
+one moves sight height from each bullet to Settings), **sight height arriving from the rig (Settings)
+rather than from the bullet and changing the trajectory when it changes**, drop-table energy reported
+in joules for the real bullet mass, the convexity of angular drop (which your measured table violates
+and every physical trajectory obeys), and a regression test that re-derives your measured drop table
+from the seeded bullet and the calipered 70 mm sight height.
 
 Known gaps (tracked in [TASKS.md](TASKS.md)): no DOM interaction tests for components, no coverage
 provider installed, no CI, no browser E2E.

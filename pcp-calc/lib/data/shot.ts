@@ -124,5 +124,7 @@ export function dropAtMrad(shot: PreparedShot, distanceM: number): number | null
 }
 
 export function buildRows(shot: PreparedShot, distancesM: number[]): DropRow[] {
-  return dropTable(shot.trajectory, distancesM, shot.bullet.massG);
+  // dropTable() wants kilograms; Bullet stores grams because that is what a
+  // person writes down. Passing massG here would report energy 1000x too big.
+  return dropTable(shot.trajectory, distancesM, shot.bullet.massG / 1000);
 }

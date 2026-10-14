@@ -62,7 +62,7 @@ export function BulletLibrary() {
     <div className="space-y-4">
       <Card
         title="Bullet library"
-        subtitle="Each bullet carries its own fitted ballistic coefficient, zero and sight height."
+        subtitle="Each bullet carries its own fitted ballistic coefficient, muzzle velocity and zero. Sight height is a property of the rifle — set it once in Setup."
         actions={
           <Button variant="primary" onClick={() => { setAdding((v) => !v); setEditingId(null); }}>
             {adding ? "Close" : "Add bullet"}

@@ -97,6 +97,17 @@ describe("prepareShot / summarizeShot", () => {
     }
   });
 
+  it("reports drop-table energy in joules for the bullet's real mass", () => {
+    // Bullet.massG is grams; the drop table must convert to kg or every energy
+    // column comes out 1000x too large.
+    const rows = buildRows(shot, [100]);
+    const v = rows[0].velocityMps;
+    expect(rows[0].energyJ).toBeCloseTo(0.5 * (bullet.massG / 1000) * v * v, 6);
+    expect(rows[0].energyJ).toBeCloseTo(summarizeShot(shot, 100).energyJ, 6);
+    // A 1 g subsonic slug is tens of joules, not tens of kilojoules.
+    expect(rows[0].energyJ).toBeLessThan(100);
+  });
+
   it("propagates an impossible zero as a typed error", () => {
     const impossible = { ...bullet, muzzleVelocityMs: 20, zeroDistanceM: 400 };
     expect(() => prepareShot(impossible, ENV, 250)).toThrow(ZeroReachableError);

@@ -18,8 +18,8 @@ where the seams are for future growth.
 | Units | **SI internally, always.** Conversion only at the display edge. | One unit system in the integrator = no conversion bugs. `lib/physics/units.ts` is the only place that converts. |
 | Angular output | **mrad first**, MOA optional | Your measurements are in mrad; PCP hold-over culture is metric. MOA is a display-only conversion. |
 | BC source | **Fitted from your own drop table**, not a catalogue | You do not know the BC. You do know how much the pellet missed at 8 ranges. That is enough to invert the model. |
-| Drag model | Point mass + **constant-Cd quadratic drag**, BC in kg/m² | Subsonic .177 slug (Mach 0.6–0.8). Cd is flat in that band, so one number reproduces your table to 0.28 mrad RMS. |
-| Testing | Vitest, 144 tests, analytic invariants + regression against your range test | The physics must be provably right, not plausibly right. |
+| Drag model | Point mass + **constant-Cd quadratic drag**, BC in kg/m² | Subsonic .177 slug (Mach 0.6–0.8). Cd is flat in that band, so one number reproduces your table to 0.25 mrad RMS. |
+| Testing | Vitest, 146 tests, analytic invariants + regression against your range test | The physics must be provably right, not plausibly right. |
 | Model vs. your measurements | **Your measurements win.** The card sets the level, the model only supplies the correction between the air you measured in and today's (§7). | No physical trajectory can reproduce your table (it is internally inconsistent at ±0.3 mrad), and forcing one wrecks 150–200 m. A model that cannot match reality should not be what you dial. |
 
 ---
@@ -138,7 +138,7 @@ pcp-calc/
 │   │   ├── seed.ts           # your .177 range test as the default state
 │   │   ├── shot.ts           # Bullet + Weather -> ShotConfig -> PreparedShot
 │   │   ├── dope.ts           # measured card + model residual correction (§7)
-│   │   └── storage.ts        # KeyValueStore, sanitisation, v1->v2 migration, import/export
+│   │   └── storage.ts        # KeyValueStore, sanitisation, v1→v2→v3 migration, import/export
 │   └── state/app-store.tsx   # reducer + useSyncExternalStore + persistence scheduling
 ├── tests/render.test.tsx     # server-render smoke tests of all four screens
 ├── scripts/serve-static.mjs  # serves ./out for `npm run start`
@@ -162,11 +162,18 @@ files be reused in a CLI, a Node service, or a .NET-free worker without edits.
 ## 4. Data flow of one calculation
 
 ```
-Weather {T, P, RH}      Bullet {mass, caliber, BC, v0, sightHeight, zero}
-        |                              |
-        v                              v
- atmosphere.ts                    shot.ts::toShotConfig
- airDensity()  ------------------>  ShotConfig (all SI)
+Weather {T,P,RH}     Settings {sightHeightMm}     Bullet {mass, caliber, BC, v0, zero}
+        |                     |                             |
+        v                     |  the rig: one number       |
+ atmosphere.ts                |  shared by every pellet     |
+ airDensity()  -----+         |                             |
+                    |         |                             |
+                    +---------+-------------+-------------+
+                                              v
+                                   shot.ts::toShotConfig
+                                              |
+                                              v
+                              ShotConfig (all SI)
                                    { muzzleVelocityMs, ballisticCoefficientKgM2,
                                      sightHeightM, zeroDistanceM,
                                      airDensityKgM3, gravityMps2 }
@@ -205,7 +212,7 @@ re-fits anything; changing BC re-fits only when you press **Fit parameters**.
 
 ```
  sight line (where the scope points)  y = 0
-        ^                       *  <- apex (+2.5 cm at 31 m)
+        ^                       *  <- apex (+1.5 cm at 35 m)
         |          .-'  `-.
         |     .-'          `-.   y(zero) = 0 by construction
  muzzle o-'-....--------------\--------> x (downrange)
@@ -249,10 +256,10 @@ For your test day (+15 °C, 998 hPa, 63 % RH): **ρ = 1.2017 kg/m³**, i.e. a de
 15 °C / 1013.25 hPa / 0 % RH, and that moist air is *lighter* than dry air (a common intuition
 inversion that a naive implementation gets wrong).
 
-Note the app stores pressure in **hPa** internally. Your 998 kPa is converted by the pressure-unit
-selector (`998 kPa = 9980 hPa`), and `validateWeather()` explicitly flags a value that looks like
-"kPa typed into an hPa field" — because that typo is the single most common way to break a ballistic
-calculation.
+Note the app stores pressure in **hPa** internally: your test day is **998 hPa** (= 99.8 kPa). Whichever
+pressure unit you pick in Settings is converted to hPa at the display edge (`998 kPa = 9980 hPa`), and
+`validateWeather()` rejects anything outside 600–1110 hPa with a message that asks *"did you enter
+kPa?"* — because that typo is the single most common way to break a ballistic calculation.
 
 ### 5.3 Drag model (`trajectory.ts`)
 
@@ -295,10 +302,9 @@ makes positional error uniform along the whole trajectory.
 
 Convergence is not assumed, it is tested: `trajectory.test.ts` compares a 5 cm step against a 2 mm
 step at 200 m and requires the difference to be **< 0.1 mrad**. For your load the actual difference is
-**7e-5 mrad** — the numerical error is more than three orders of magnitude smaller than the
-0.28 mrad measurement noise the model is fitted against, so integration error is not what limits
-accuracy; your measurements are. For scale, 0.1 mrad at 200 m is 2 cm.
-For scale: 0.1 mrad at 200 m is 2 cm.
+**7e-5 mrad** — the numerical error is more than three orders of magnitude smaller than the 0.25 mrad
+measurement noise the model is fitted against, so integration error is not what limits accuracy; your
+measurements are. For scale, 0.1 mrad at 200 m is 2 cm.
 
 Two analytic invariants guard the integrator against silent algebra mistakes:
 
@@ -368,7 +374,7 @@ numbers. The UI turns that into an explicit message ("the trajectory dies out ar
 You have no BC. You have this:
 
 ```
-+15 °C, 63 % RH, 998 kPa, 280 m/s
++15 °C, 63 % RH, 998 hPa, 280 m/s, sight height 70 mm (calipered)
 25 m +0.6 | 50 m 0.0 (zero) | 75 m -1.1 | 100 m -2.9 | 125 m -4.8 | 150 m -7.3 | 175 m -9.5 | 200 m -11.2   [mrad]
 ```
 
@@ -514,8 +520,10 @@ This is the important finding, and it is testable rather than arguable.
 Beyond the zero, a projectile's **angular drop must become more negative at an increasing rate**:
 each equal 25 m step must drop *more* than the previous one. Gravity acts for longer, and drag has
 slowed the pellet, so both effects compound. This is not an assumption of the implementation — it is
-a property of the trajectory family. A test scans 583 physical configurations (BC 50–6000 kg/m²,
-muzzle velocity 150–600 m/s, sight height 10–120 mm, zero 25/50/100 m) and finds **zero violations**.
+a property of the trajectory family. A test scans the cross product of BC {50, 100, 200, 422, 900,
+2000, 6000} kg/m² × muzzle velocity {150, 200, 280, 400, 600} m/s × sight height {10, 40, 120} mm ×
+zero {25, 50, 100} m — 315 configurations, 150+ of them valid trajectories that reach every measured
+range — and finds **zero violations**.
 
 Your table's step sizes beyond 50 m:
 
@@ -624,11 +632,14 @@ interface DopeCard {
   savedAt: string;
 }
 AppState { ..., dope: DopeCard | null }
-STATE_VERSION = 2
+STATE_VERSION = 3
 ```
 
 - `AppState.measurements` (v1) became `AppState.dope` (v2). Version 1 files are migrated on load:
   the stored measurement list becomes a card stamped with the stored weather and the active bullet.
+- Sight height used to live on each bullet (v2). It moved to `Settings` (v3), because it is a property
+  of the rifle and scope rather than of the pellet. Version 2 files are migrated by taking the active
+  bullet's value (or the first valid one) as the rig measurement.
 - Editing the drop list restamps the card with the current bullet and the current weather, so a card
   can never silently describe conditions the app is no longer showing.
 - Deleting the bullet a card belongs to clears the card. A card belonging to a different bullet is
@@ -641,7 +652,7 @@ Code: `lib/data/dope.ts` (pure, no React), tested in `lib/data/dope.test.ts`.
 ### 7.6 What the calculator shows
 
 - A **Measured / Model** toggle in the hold-over card.
-- The headline number, plus a line: `measured −2.90 mrad · model −3.21 mrad · correction +0.31 mrad`,
+- The headline number, plus a line: `measured −2.90 mrad · model −3.02 mrad · correction +0.12 mrad`,
   and where the value came from (*measured at this range* / *interpolated* / *model shifted by the
   nearest measured offset).
 - Drop table: hold column = corrected, second column = uncorrected model, with `●` on measured rows
@@ -671,21 +682,22 @@ Code: `lib/data/dope.ts` (pure, no React), tested in `lib/data/dope.test.ts`.
 
 ```ts
 AppState {
-  version: 2
+  version: 3
   bullets: Bullet[]        // each: caliberMm, massG, ballisticCoefficientKgM2,
-                           //       muzzleVelocityMs, sightHeightMm, zeroDistanceM, notes
+                           //       muzzleVelocityMs, zeroDistanceM, notes
   activeBulletId: string
   weather: Weather         // temperatureC, pressureHpa, humidityPct
   settings: Settings       // unitSystem, angularUnit, dropSource, clickValue, clickUnit,
-                           // tableDistancesM, maxRangeM, pressureUnit, temperatureUnit
+                           // tableDistancesM, maxRangeM, sightHeightMm, pressureUnit,
+                           // temperatureUnit
   distanceM: number        // last range on the calculator
   dope: DopeCard | null    // { bulletId, weather, measurements, savedAt }
 }
 ```
 
 `version` exists so migrations are explicit rather than guessed: version 1 stored a bare
-`measurements` list, and `sanitizeAppState()` converts it into a `dope` card stamped with the stored
-weather. See §7.5.
+`measurements` list and `sanitizeAppState()` converts it into a `dope` card stamped with the stored
+weather; version 2 stored `sightHeightMm` on every bullet and it is lifted into `Settings`. See §7.5.
 
 Units in storage are the units a *person* uses: grams, millimetres, m/s, metres, °C, hPa. Only
 `toShotConfig()` converts to SI for the integrator. Storing what a human wrote down (sight height in
@@ -764,7 +776,7 @@ flow can offer `replaceState` without a validation step.
 ## 9. UI and responsive design
 
 - **Hold-over source**: a Measured / Model segmented control in the hold-over card. Under the big
-  number the app prints `measured −2.90 mrad · model −3.21 mrad · correction +0.31 mrad` and where
+  number the app prints `measured −2.90 mrad · model −3.02 mrad · correction +0.12 mrad` and where
   the value came from. The uncorrected model is never hidden, so you can always see how far the card
   and the model disagree.
 - **Drop table**: `●` marks a row that was actually measured, `◦` one interpolated between measured
@@ -860,7 +872,7 @@ Bullets → Backup exists precisely so a wiped browser profile is an inconvenien
 
 ## 11. Testing strategy
 
-`npm test` → Vitest 4, **9 files / 140 tests**, plain Node environment (no jsdom needed for the
+`npm test` → Vitest 4, **9 files / 146 tests**, plain Node environment (no jsdom needed for the
 physics), ~2 s.
 
 ### 11.1 What each file protects
@@ -869,13 +881,15 @@ physics), ~2 s.
 |---|---|
 | `lib/physics/atmosphere.test.ts` | ISA density reproduced from first principles; ρ rises when colder; ρ rises with pressure; **moist air is lighter than dry air**; vapour pressure from RH; absurd humidity clamped; speed of sound at 15 °C; the "kPa typed as hPa" typo is flagged |
 | `lib/physics/trajectory.test.ts` | `k = ρ/(2·BC)`; non-positive BC rejected; **vacuum analytic invariant**; **exponential drag decay analytic invariant**; step-size convergence < 0.1 mrad at 200 m; zero crossing exact to 1e-5 m; both crossings reported; `ZeroReachableError`; sign convention (positive before the zero); monotonic drop/velocity/TOF; `null` for unreachable distances; energy = ½mv²; apex and bore-height crossing |
-| `lib/physics/fit.test.ts` | recovers a synthetic BC; recovers BC **and** velocity when both free; tolerates noise; residuals for every point; clean failure with no data; bad rows ignored instead of poisoning the fit; parameters stay inside bounds; recovers from a completely wrong starting BC; **speed budget**; helpful message when distances are unreachable; **single-range recalibration** works and predicts 200 m to < 0.1 mrad; chronograph-pair BC; impossible velocity readings refused; **regression against your real range test** |
+| `lib/physics/fit.test.ts` | recovers a synthetic BC; recovers BC **and** velocity when both free; tolerates noise; residuals for every point; clean failure with no data; bad rows ignored instead of poisoning the fit; parameters stay inside bounds; recovers from a completely wrong starting BC; **speed budget**; helpful message when distances are unreachable; **single-range recalibration** works and predicts 200 m to < 0.1 mrad; chronograph-pair BC; impossible velocity readings refused; **regression against your real range test**,
+built from the seed itself (BC 352.8, calipered 70 mm sight height) so the suite can never drift away
+from the rig the app ships with |
 | `lib/physics/units.test.ts` | mrad↔MOA, pressure unit round-trips (hPa/kPa/mmHg/inHg/psi), °C↔°F, metric/imperial length-velocity-energy-mass-caliber conversions, click arithmetic, formatting of non-finite values as `—` |
-| `lib/data/shot.test.ts` | UI units → SI config; `Cd = m/(A·BC)`; implied Cd inside a sensible band for the fitted slug; seeded bullet at 100 m; zero is zero; unreached distance reported, not invented; drop table built; impossible zero propagates as a typed error; seed state is self-consistent and carries your test conditions |
-| `lib/data/storage.test.ts` | `MemoryStore`; full state round-trip; `null` on empty and on corrupt JSON (never throws); fallback to seed; distinct storage key; sanitisation (clamping, dropping bad bullets, defaults, de-duplicated ids, repaired active id, filtered measurement rows); import/export losslessness and readable errors; unique ids |
+| `lib/data/shot.test.ts` | UI units → SI config; **sight height comes from Settings (the rig), not from the bullet**, and changing it really does change the trajectory; `Cd = m/(A·BC)`; implied Cd inside a sensible band for the fitted slug; seeded bullet at 100 m; zero is zero; unreached distance reported, not invented; drop table built; impossible zero propagates as a typed error; seed state is self-consistent and carries your test conditions |
+| `lib/data/storage.test.ts` | `MemoryStore`; full state round-trip; `null` on empty and on corrupt JSON (never throws); fallback to seed; distinct storage key; sanitisation (clamping, dropping bad bullets, defaults, de-duplicated ids, repaired active id, filtered measurement rows); **v1→v2 card migration and v2→v3 sight-height migration**; import/export losslessness and readable errors; unique ids |
 | `lib/data/dope.test.ts` | **the card reproduces your table exactly** at every measured range; the model alone does not; **no physical trajectory reproduces your table** (convexity of angular drop violated by the data, and verified across 150+ physical configurations); the best 3-parameter fit still cannot reach −2.90 at 100 m; interpolation between ranges; constant offsets outside the span; a colder day shifts the corrected hold-over by exactly the model's shift; card ownership rules |
 | `lib/state/app-store.test.ts` | every reducer action; identity preserved on patch; library never emptied; no-op actions return the same object; card restamping, card clearing with its bullet, empty card removal; store hydrate/persist behaviour |
-| `tests/render.test.tsx` | all four screens server-render without throwing; the prerendered headline is the **measured** number (100 m = `−2.90`, 25 m = `+0.60`, 200 m = `−11.20`) while the model column still shows `−3.21 / +0.88 / −11.38`; the correction line `+0.31` is present; measured points render as chart dots; every configured table row appears |
+| `tests/render.test.tsx` | all four screens server-render without throwing; the prerendered headline is the **measured** number (100 m = `−2.90`) while the line beside it reads `model −3.02` with `correction +0.12`; the seeded BC renders as `353 kg/m²`; measured points render as chart dots; every configured table row appears |
 
 ### 11.2 The philosophy
 
@@ -887,10 +901,10 @@ fails even on its first run.
 
 ### 11.3 The regression tests that tie the app to your rifle
 
-`fit.test.ts` re-runs your exact range test: the seeded bullet must reproduce your measured table
-(RMS < 0.35 mrad, max < 0.5 mrad), and fitting that table from a deliberately wrong starting BC of
-150 must land between 350 and 520 kg/m² with RMS < 0.3 mrad. If a future change makes the model
-disagree with your rifle, the suite says so.
+`fit.test.ts` re-runs your exact range test: the seeded bullet and the seeded rig (70 mm) must
+reproduce your measured table (RMS < 0.35 mrad, max < 0.5 mrad), and fitting that table from a
+deliberately wrong starting BC of 150 must land back on 352.8 kg/m² (±15) with RMS < 0.3 mrad. If a
+future change makes the model disagree with your rifle, the suite says so.
 
 `dope.test.ts` is the counterpart: it asserts the model alone does **not** match your table, that no
 physical trajectory can, and that the card therefore takes over the absolute level. A change that
@@ -915,10 +929,12 @@ quietly makes the calculator show the model instead of your measurements fails t
    at 100 m). The app gives no windage. This is a deliberate omission, not an oversight.
 3. **No rifle angle.** Uphill/downhill shooting makes the effective zero longer than the horizontal
    distance. At 200 m on a 30° slope this is a significant error. Highest-value missing feature.
-4. **Sight height is an assumption you must supply.** It shifts the near-zero and the 25 m value
-   noticeably, and it is the largest single lever in the fit: assuming 60 mm instead of 40 mm improves
-   the fit RMS from 0.277 to 0.235 mrad. If you have not calipered it, either measure it or let the
-   fit solve it — but never both velocity *and* sight height free at the same time.
+4. **Sight height is an input you must supply.** On this rifle it is no longer a guess: **70 mm,
+   calipered, stored in Settings → Rifle and scope** — and it is the largest single lever in the fit
+   (40 mm → 70 mm moved the fitted BC from 422 to 353 kg/m², the 100 m prediction from −3.21 to −3.02,
+   and the first zero from 12 m to 20.6 m). If you change rings, mounts or the scope, re-measure it and
+   re-fit. If you have never measured it, either measure it or let the fit solve it — but never both
+   velocity *and* sight height free at the same time.
 5. **BC is only as good as your drop measurements.** Group size, rest technique and range
    determination all enter the fit. 8 points at known ranges beat 3 points.
 6. **`maximumScale=1` in the viewport** prevents pinch zoom. Deliberate for layout stability, but it

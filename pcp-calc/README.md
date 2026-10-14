@@ -1,3 +1,11 @@
+# pcp-calc
+
+This folder is the Next.js app itself. **The project documentation lives one level up:**
+[README.md](../README.md) (what it does and how to use it), [architecture.md](../architecture.md)
+(how it works and why) and [TASKS.md](../TASKS.md) (done / next / not planned).
+
+---
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started

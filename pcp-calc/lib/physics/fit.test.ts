@@ -9,7 +9,8 @@ import {
   fitFromDrops,
 } from "./fit";
 import { STANDARD_GRAVITY, type ShotConfig, angularDropMrad, simulate } from "./trajectory";
-import { SEED_MEASUREMENTS } from "../data/seed";
+import { SEED_MEASUREMENTS, SEED_SIGHT_HEIGHT_MM, SEED_WEATHER, createSeedBullet } from "../data/seed";
+import { toShotConfig } from "../data/shot";
 
 const TEST_WEATHER = { temperatureC: 15, pressureHpa: 998, humidityPct: 63 };
 const RHO = airDensity(TEST_WEATHER);
@@ -205,14 +206,19 @@ describe("ballisticCoefficientFromVelocity", () => {
 });
 
 describe("regression against the real range test", () => {
-  const seeded: ShotConfig = {
-    muzzleVelocityMs: 280,
-    ballisticCoefficientKgM2: 422.3,
-    sightHeightM: 0.04,
-    zeroDistanceM: 50,
-    airDensityKgM3: RHO,
-    gravityMps2: STANDARD_GRAVITY,
-  };
+  // Built from the seed itself, so this suite can never drift away from the
+  // bullet and rig the app actually ships with (BC 352.8, calipered 70 mm).
+  const seeded: ShotConfig = toShotConfig(createSeedBullet(), {
+    weather: SEED_WEATHER,
+    sightHeightMm: SEED_SIGHT_HEIGHT_MM,
+  });
+
+  it("uses the rig as configured on the Settings screen", () => {
+    expect(seeded.sightHeightM).toBeCloseTo(0.07, 9);
+    expect(seeded.muzzleVelocityMs).toBe(280);
+    expect(seeded.zeroDistanceM).toBe(50);
+    expect(seeded.ballisticCoefficientKgM2).toBeCloseTo(352.8, 1);
+  });
 
   it("the seeded bullet reproduces the measured drop table", () => {
     const traj = simulate(seeded, 220);
@@ -227,8 +233,9 @@ describe("regression against the real range test", () => {
       "ballisticCoefficientKgM2",
     ]);
     expect(result.success).toBe(true);
-    expect(result.config.ballisticCoefficientKgM2).toBeGreaterThan(350);
-    expect(result.config.ballisticCoefficientKgM2).toBeLessThan(520);
+    expect(result.config.ballisticCoefficientKgM2).toBeGreaterThan(340);
+    expect(result.config.ballisticCoefficientKgM2).toBeLessThan(370);
+    expect(result.config.sightHeightM).toBeCloseTo(seeded.sightHeightM, 9);
     expect(result.rmsMrad).toBeLessThan(0.3);
   });
 

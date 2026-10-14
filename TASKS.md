@@ -5,7 +5,7 @@ Priority: **P0** = needed to be genuinely useful at the range · **P1** = worth 
 **P2** = nice to have · **P3** = only if a real need appears
 Effort: `S` < 1 h · `M` 1–3 h · `L` half a day+
 
-Last verified: `npm test` → **9 files / 140 tests passing (~2 s)**, `npx eslint .` → clean,
+Last verified: `npm test` → **9 files / 146 tests passing (~2 s)**, `npx eslint .` → clean,
 `npx next build` → clean static export of 5 routes.
 
 ---
@@ -48,7 +48,9 @@ Last verified: `npm test` → **9 files / 140 tests passing (~2 s)**, `npx eslin
 - [x] Chronograph route: BC from muzzle + at-range velocity pair, with impossible-reading rejection.
 - [x] "Copy predicted" button so an existing model can be turned into a measurement sheet.
 - [x] Single-range recalibration path (one group at 100 m → whole day recalibrated).
-- [x] **Your range test fitted**: BC = 422.3 kg/m² (Cd 0.148), RMS 0.28 mrad, worst point 0.40 mrad.
+- [x] **Your range test fitted**: BC = 352.8 kg/m² (Cd 0.177), RMS 0.25 mrad, worst point 0.34 mrad —
+      with the calipered 70 mm sight height held fixed (see M8; before that measurement it was
+      BC 422.3 / Cd 0.148 / RMS 0.28).
 - [x] Regression test tying the model to your measured table.
 
 ---
@@ -60,9 +62,10 @@ Last verified: `npm test` → **9 files / 140 tests passing (~2 s)**, `npx eslin
 - [x] Drop table with tap-to-jump rows and progressive column collapse.
 - [x] Trajectory chart (dependency-free SVG), mrad / cm toggle.
 - [x] Weather editor on the calculator screen (the day-to-day control) + ISA preset button.
-- [x] `/bullets` library: add / edit / duplicate / delete, per-bullet BC, zero, sight height, notes.
+- [x] `/bullets` library: add / edit / duplicate / delete, per-bullet BC, zero, notes.
 - [x] `/calibrate` screen.
-- [x] `/settings`: units, turret click value and unit, table distances, max range, storage info.
+- [x] `/settings`: **Rifle and scope (sight height)**, units, turret click value and unit, table
+      distances, max range, storage info.
 - [x] Responsive shell: bottom tab bar on phones, top nav on `md+`, 40–44 px touch targets,
       tabular numerals, dark default + light theme.
 - [x] Active bullet + current weather always visible in the header; online/offline pill.
@@ -110,10 +113,10 @@ is **−2.90**. Investigation showed the gap cannot be closed by any trajectory 
       sets the absolute level, the model supplies the shape and the weather translation.
 - [x] Additive rather than multiplicative: a ratio is 0/0 at the zero, which destroys the near field.
 - [x] `DopeCard` (bulletId + weather + measurements + savedAt), `AppState.dope`, `STATE_VERSION = 2`
-      with a v1 → v2 migration on load.
+      with a v1 → v2 migration on load (superseded by v3, see M8).
 - [x] Card ownership rules: editing restamps bullet + weather, empty list clears the card, deleting the
       bullet clears the card, a card from another bullet is refused with an explicit message.
-- [x] UI: Measured / Model toggle, `measured −2.90 · model −3.21 · correction +0.31` line, `●`/`◦`
+- [x] UI: Measured / Model toggle, `measured −2.90 · model −3.02 · correction +0.12` line, `●`/`◦`
       markers in the drop table, measured dots under the chart curve, uncorrected model always visible.
 - [x] `Settings.dropSource` + a Hold-over source card in Settings showing which bullet/weather the card
       belongs to.
@@ -123,14 +126,56 @@ is **−2.90**. Investigation showed the gap cannot be closed by any trajectory 
 
 ---
 
+## M8 — Sight height as a first-class parameter (done)
+
+Sight height (bore centre → scope centre) turned out to be the single most influential input in the
+model, so it was made an explicit, stored, fit-able parameter instead of a hard-coded assumption.
+
+- [x] `Settings.sightHeightMm` added (clamped 2–150 mm by `sanitizeSettings()`), with a **Rifle and
+      scope** card on `/settings` and a hint explaining why it matters.
+- [x] Threaded through the whole stack: `Settings` → `ShotEnvironment.sightHeightMm` →
+      `toShotConfig()` → `ShotConfig.sightHeightMm` → integrator / zero solver / apex / bore-height
+      crossing → `buildDopeModel()` residuals → calibration and chart.
+- [x] `sightHeightM` added to `FreeParameter` in `fit.ts` with physical bounds (`FIT_BOUNDS` 0.002–0.15 m),
+      so the Calibrate screen can solve it when it has not been measured (opt-in checkbox, labelled
+      "only if you have not measured it").
+- [x] A fit that solves sight height writes the result to **Settings**, not to the bullet, because it is
+      a property of the rig.
+- [x] `STATE_VERSION = 3`: sight height **moved from each bullet to `Settings`**; v2 files are migrated
+      by taking the active bullet's value (or the first valid one). Tested in `lib/data/storage.test.ts`.
+- [x] `lib/data/shot.test.ts` asserts sight height comes from the environment rather than the bullet and
+      that 40 mm vs 70 mm really does change the trajectory.
+- [x] **Measured with a caliper: 70 mm.** Re-fitting with it fixed gave BC 352.8 kg/m² (Cd 0.177),
+      RMS 0.252 mrad, 100 m at −3.02 mrad, first zero 20.6 m, apex +1.5 cm at 35.4 m — better fit *and*
+      a more physical Cd than the 40 mm guess (BC 422.3, Cd 0.148, RMS 0.277, 100 m at −3.21).
+- [x] Docs updated to match: `README.md`, `architecture.md` §5.5 / §6.2 / §7.2 / §7.5 / §8.1 / §12.
+
+---
+
+## M9 — Consistency fixes found while auditing the docs (done)
+
+- [x] **Drop-table energy was 1000× too large.** `buildRows()` passed `Bullet.massG` (grams) to
+      `dropTable()`, which expects kilograms, so the table showed ~27 900 J at 100 m instead of 27.9 J.
+      Fixed in `lib/data/shot.ts`; `lib/data/shot.test.ts` now asserts `E = ½mv²` in joules and that the
+      table agrees with the headline summary.
+- [x] **The range-test regression was testing an old rig.** `fit.test.ts` hard-coded `sightHeightM: 0.04`
+      and BC 422.3 — the pre-caliper configuration — so it was no longer testing the bullet and rig the
+      app ships. It now builds the config from the seed (`createSeedBullet()` + `SEED_SIGHT_HEIGHT_MM`)
+      and asserts the fit lands back on 352.8 kg/m².
+- [x] Stale UI copy: the Bullets screen claimed each bullet carries its own sight height. It does not —
+      the field lives in Settings → Rifle and scope.
+
+---
+
 ## M7 — Remaining work, prioritised
 
 ### P0 — do next, these change the on-range experience
 
-- [ ] **P0-a Caliper the sight height.** This is the single biggest lever left in the model: assuming
-      60 mm instead of the current 40 mm improves the fit RMS from 0.277 to 0.235 mrad and moves the
-      100 m prediction from −3.21 to −3.09. Measure bore-centre to scope-centre with a caliper (or the
-      ruler-and-two-sticks method), enter it in Bullets, re-fit. *(S — a measurement, not code)*
+- [x] **P0-a Caliper the sight height.** Done — **70 mm** measured bore-centre to scope-centre. It was
+      the biggest lever in the model: the fit moved from BC 422.3 / RMS 0.277 / −3.21 at 100 m (40 mm
+      assumed) to **BC 352.8 / RMS 0.252 / −3.02 at 100 m**, and the first zero from 12 m to 20.6 m.
+      Stored in Settings → Rifle and scope; the seeded bullet was re-fitted against it. See M8.
+      *(S — a measurement, not code)*
 - [ ] **P0-b Re-measure 125 / 150 / 175 / 200 m with more shots.** The current table is physically
       inconsistent in exactly this region (§7.1 of architecture.md). Ten shots per range instead of a
       five-shot group, or a target card with a measured aim point, will tell you which number is wrong.
@@ -147,8 +192,8 @@ is **−2.90**. Investigation showed the gap cannot be closed by any trajectory 
       Acceptance: a copy-pasteable section in `README.md` that a non-expert can follow; service worker
       confirmed registering from a phone; app usable in airplane mode afterwards.
 - [ ] **P0-e Verify the fitted BC against a chronograph at range** (if you have one): measure velocity
-      at 100 m and compare with the model's 242.9 m/s. Strongest available validation of
-      BC = 422.3 kg/m², and it is a measurement task, not a code task. *(S)*
+      at 100 m and compare with the model's 236.2 m/s. Strongest available validation of
+      BC = 352.8 kg/m², and it is a measurement task, not a code task. *(S)*
 
 ### P1 — worth doing soon
 
@@ -187,7 +232,8 @@ is **−2.90**. Investigation showed the gap cannot be closed by any trajectory 
 - [ ] **P2-d Temperature/velocity relationship**: store a couple of (temperature, muzzle velocity)
       pairs for your rifle and let the app interpolate velocity for a cold morning. *(M)*
 - [ ] **P2-e Multiple rifles/scopes** (a `Rifle` entity above `Bullet`: caliber, sight height, zero).
-      Only worth it when you own a second rifle. *(M)*
+      Sight height already lives in `Settings` as one rig-wide number (M8); this task is what to do when
+      you own a **second** rifle and that single number stops being enough. *(M)*
 - [ ] **P2-f Metric/imperial toggle for range too** (yards), currently ranges are metres by design. *(S)*
 - [ ] **P2-g Theme toggle** (manual light/dark override instead of following the system). *(S)*
 
@@ -218,9 +264,9 @@ is **−2.90**. Investigation showed the gap cannot be closed by any trajectory 
 
 ## Open questions for you (answers change the next tasks)
 
-1. **Sight height** — is 40 mm what you actually measured, or an estimate? It is the largest single
-   lever in the fit (60 mm improves RMS 0.277 → 0.235) and it shapes the 25 m value and the first zero
-   (12.1 m). If it is an estimate, caliper it — that is task P0-a.
+1. **Sight height** — answered: **70 mm, calipered** (was a 40 mm estimate). It is the largest single
+   lever in the fit, it now lives in Settings → Rifle and scope, and it sets the first zero at 20.6 m.
+   Re-measure it if you ever change rings, mounts or the scope, then re-fit.
 2. **Which of 125 / 150 / 175 / 200 m was measured most carefully?** Those four are where the table
    becomes physically impossible (§7.1). If you remember aiming carefully at one of them and guessing
    at another, that is the information that fixes the table.
