@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">PCP Ballistic</string>
+    <string name="title_activity_main">PCP Ballistic</string>
+    <string name="package_name">com.pcpballistic.calc</string>
+    <string name="custom_url_scheme">com.pcpballistic.calc</string>
+</resources>

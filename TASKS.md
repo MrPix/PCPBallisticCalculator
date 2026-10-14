@@ -6,7 +6,8 @@ Priority: **P0** = needed to be genuinely useful at the range · **P1** = worth 
 Effort: `S` < 1 h · `M` 1–3 h · `L` half a day+
 
 Last verified: `npm test` → **9 files / 146 tests passing (~2 s)**, `npx eslint .` → clean,
-`npx next build` → clean static export of 5 routes.
+`npx next build` → clean static export of 5 routes, `npm run apk` → APK built and verified on an
+API 36.1 emulator in airplane mode (renders, persists across a cold restart, requests no permissions).
 
 ---
 
@@ -92,8 +93,22 @@ Last verified: `npm test` → **9 files / 146 tests passing (~2 s)**, `npx eslin
 - [x] Service worker: network-first for HTML/navigation payloads, stale-while-revalidate for hashed
       assets, old-cache cleanup, install never fails offline.
 - [x] `npm run start` → `scripts/serve-static.mjs` to preview the real production bundle.
-- [~] **Hosting recipe for a phone over LAN** — needs HTTPS for the service worker to register
-      (secure-context rule). See M6-P1-a.
+- [x] **Android APK: `npm run apk`.** Capacitor 8 wraps the *same* `out/` folder in a real app, so
+      there is no server, no HTTPS, no secure-context rule and no connection on the day you install.
+      Verified on an API 36.1 emulator: cold start in airplane mode renders the calculator; a range
+      change survives force-stop + relaunch while still offline; tab navigation stays client-side;
+      `dumpsys package` reports no requested permissions. `npm run apk:release` builds a signed
+      release APK (own key, 3.6 MB vs 5.0 MB debug). Rationale and gotchas: `architecture.md` §10.6.
+- [x] APK-specific behaviour, each deliberate: no service worker inside the app (nothing to cache, and
+      a cache could only go stale after an app update); `on device` pill instead of `online`/`offline`
+      (`navigator.onLine` reported *online* in airplane mode in a WebView); `INTERNET` permission
+      removed from `AndroidManifest.xml`; WebView debugging off in release builds.
+- [x] Launcher icon and splash cut from the project's own artwork: `npm run icons` writes `assets/`,
+      `@capacitor/assets` generates the mipmaps/adaptive icon/splash at every density.
+- [~] **Hosting recipe for a phone over LAN** — the Android half is now solved without needing a
+      secure context at all. What remains is documenting HTTPS for the *browser* install (iOS, or a
+      tablet reading a home server). Written up in README "Hosting" and `architecture.md` §10.3, but
+      not yet followed end-to-end on a real device. See P0-d.
 
 ---
 
@@ -186,9 +201,10 @@ model, so it was made an explicit, stored, fit-able parameter instead of a hard-
       Acceptance: angle input on the calculator; drop recomputed from horizontal range; unit tests for
       0°, ±30°, ±45° against the known "rifleman's rule" approximation; chart/table follow the
       corrected value; the measured card must not double-count the correction.
-- [ ] **P0-d Hosting recipe that gives a secure context on the LAN.** Pick one and document it
-      end-to-end: Tailscale Serve (recommended), Caddy `tls internal`, or running the build on the
-      tablet itself. *(M)*
+- [~] **P0-d Hosting recipe that gives a secure context on the LAN.** The Android case no longer needs
+      this at all — `npm run apk` sidesteps the secure-context rule (see M5, `architecture.md` §10.6).
+      What is left is the non-Android case: iOS, or a tablet reading a home server. Pick one and
+      document it end-to-end: Tailscale Serve (recommended) or Caddy `tls internal`. *(M)*
       Acceptance: a copy-pasteable section in `README.md` that a non-expert can follow; service worker
       confirmed registering from a phone; app usable in airplane mode afterwards.
 - [ ] **P0-e Verify the fitted BC against a chronograph at range** (if you have one): measure velocity
@@ -245,6 +261,12 @@ model, so it was made an explicit, stored, fit-able parameter instead of a hard-
 - [ ] **P3-b Mach-dependent drag** (a Cd-vs-Mach table) if you ever load supersonically or want
       better than ~0.3 mrad fidelity from a fitted model. *(L)*
 - [ ] **P3-c 6-DOF / spin drift / Coriolis.** Not worth it below ~300 m with a 1 g slug. *(L)*
+- [ ] **P3-d Next static-export segment payloads 404.** Next's client requests
+      `/bullets/__next.bullets.__PAGE__.txt` while `next build` writes
+      `bullets/__next.bullets/__PAGE__.txt` — a directory where the URL has a dot — so those prefetch
+      requests 404 on any static host and inside the APK. Cosmetic only: `_tree`/`_full` resolve,
+      navigation is confirmed still client-side, and nothing user-visible degrades. Re-check on a Next
+      upgrade rather than patching around it here. *(S)* See `architecture.md` §10.2.
 
 ---
 
@@ -258,7 +280,7 @@ model, so it was made an explicit, stored, fit-able parameter instead of a hard-
 | Catalogue BC database as the primary source | Rejected | Your whole question is that catalogue BCs are unavailable for hand-loaded slugs |
 | Third-party charting library | Rejected | 140 lines of SVG covers it; a library costs tens of KB on a field connection |
 | Wind modelling as a precise feature | Deferred (P1-a) | A wrong wind model is worse than an honest absence of one |
-| Native iOS/Android app | Rejected | PWA install gives home-screen + offline without a second codebase |
+| Native iOS/Android app | Rejected as a *second codebase*; Android exists as a wrapper | `npm run apk` packages the same `out/` build in a WebView — one codebase, and it removes the secure-context requirement the PWA depends on. A hand-written native app is still rejected |
 
 ---
 
@@ -279,8 +301,8 @@ model, so it was made an explicit, stored, fit-able parameter instead of a hard-
 6. **Do you shoot angled shots** (hills/ridges)? If yes, P0-c moves to the top of the code list.
 7. **Do you have a chronograph at range** (one screen, not just muzzle)? If yes, P0-e is the fastest
    way to validate the fitted BC.
-8. **How will you actually host it** — home server over Wi-Fi, or open it directly on the tablet?
-   This decides whether P0-d is a 20-minute job or a 2-hour one.
+8. **How will you actually host it** — answered for Android: `npm run apk`, no hosting involved. Still
+   open for iOS or a tablet reading a home server, which is what P0-d now covers.
 9. **Is 250 m the right max range**, or do you want the table extended to 300 m? Note that past 200 m
    the number is model + a constant offset, i.e. extrapolation.
 

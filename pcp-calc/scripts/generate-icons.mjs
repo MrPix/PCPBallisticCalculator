@@ -88,19 +88,19 @@ function trajectoryPoints(count = 120) {
 
 const CURVE = trajectoryPoints();
 
-function coverage(distance, halfWidth) {
-  // 1 px of soft edge at 512 -> 1/512 in normalised units
-  const edge = 1.5 / 512;
+function coverage(distance, halfWidth, size) {
+  // 1.5 px of soft edge, whatever the render size is
+  const edge = 1.5 / size;
   return Math.max(0, Math.min(1, (halfWidth - distance) / edge + 0.5));
 }
 
-function sample(u, v) {
+function sample(u, v, size) {
   let color = BG;
   let alpha = 1;
 
   // sight line
   const sight = distToSegment(u, v, 0.1, 0.7, 0.9, 0.7);
-  const sightCov = coverage(sight, 0.008);
+  const sightCov = coverage(sight, 0.008, size);
   if (sightCov > 0) {
     color = mix(color, MUTED, sightCov);
   }
@@ -111,19 +111,19 @@ function sample(u, v) {
     const d = distToSegment(u, v, CURVE[i - 1][0], CURVE[i - 1][1], CURVE[i][0], CURVE[i][1]);
     if (d < best) best = d;
   }
-  const curveCov = coverage(best, 0.028);
+  const curveCov = coverage(best, 0.028, size);
   if (curveCov > 0) color = mix(color, AMBER, curveCov);
 
   // muzzle
   const muzzle = Math.hypot(u - 0.14, v - 0.7);
-  const muzzleCov = coverage(muzzle, 0.045);
+  const muzzleCov = coverage(muzzle, 0.045, size);
   if (muzzleCov > 0) color = mix(color, LIGHT, muzzleCov);
 
   // impact
   const impact = Math.hypot(u - 0.86, v - 0.82);
-  const impactCov = coverage(impact, 0.05);
+  const impactCov = coverage(impact, 0.05, size);
   if (impactCov > 0) color = mix(color, AMBER, impactCov);
-  const ringCov = coverage(Math.abs(impact - 0.062), 0.008);
+  const ringCov = coverage(Math.abs(impact - 0.062), 0.008, size);
   if (ringCov > 0) color = mix(color, LIGHT, ringCov * 0.9);
 
   void alpha;
@@ -150,7 +150,7 @@ function render(size) {
         for (let sx = 0; sx < samples; sx++) {
           const u = (x + (sx + 0.5) / samples) / size;
           const v = (y + (sy + 0.5) / samples) / size;
-          const c = sample(u, v);
+          const c = sample(u, v, size);
           r += c[0];
           g += c[1];
           b += c[2];
@@ -177,4 +177,17 @@ for (const [name, size] of targets) {
   const png = render(size);
   writeFileSync(join(outDir, name), png);
   console.log(`wrote public/${name} (${size}x${size}, ${png.length} bytes)`);
+}
+
+// Source artwork for `@capacitor/assets`, which cuts the Android launcher
+// icons and splash from these. 1024 is the size that tool expects.
+const assetsDir = join(dirname(fileURLToPath(import.meta.url)), "..", "assets");
+mkdirSync(assetsDir, { recursive: true });
+for (const [name, size] of [
+  ["icon.png", 1024],
+  ["splash-icon.png", 512],
+]) {
+  const png = render(size);
+  writeFileSync(join(assetsDir, name), png);
+  console.log(`wrote assets/${name} (${size}x${size}, ${png.length} bytes)`);
 }

@@ -39,3 +39,14 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# generated artwork that @capacitor/assets cuts the Android icons/splash from
+# (regenerate with `npm run icons`)
+/assets
+
+# Release signing material created by `npm run apk:release`. Never commit these:
+# they are what signs every build you ship, and the passwords sit next to them.
+/android/release.keystore
+/android/keystore.properties
+/android/app/release.keystore
+/android/app/keystore.properties

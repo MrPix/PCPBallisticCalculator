@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // The generated Android project. It holds no source we maintain - only
+    // Gradle files and a copy of ./out - and ESLint would otherwise lint
+    // Next's own minified chunks twice over.
+    "android/**",
   ]),
 ]);
 

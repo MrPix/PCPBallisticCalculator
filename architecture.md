@@ -835,13 +835,22 @@ normal case, not an error. `activate` deletes caches from older `VERSION`s.
 
 Net effect: open the app once with signal, and afterwards it works in airplane mode.
 
+**One quirk of the static export, worth knowing because it looks alarming in a log.** Next's client
+asks for a nested segment payload as `/bullets/__next.bullets.__PAGE__.txt`, but `next build` writes
+that file as `bullets/__next.bullets/__PAGE__.txt` — a directory where the URL has a dot. On any plain
+static host, and inside the APK, exactly those requests 404. It is cosmetic: the `_tree` and `_full`
+payloads resolve, navigation stays client-side (verified by setting a `window` marker before a tab
+change and reading it after — it survives), and only the prefetch is wasted. The mapping is Next's to
+fix, not this app's; tracked in TASKS.md.
+
 ### 10.3 The one real constraint: secure context
 
 Service workers only register on a **secure context**. `http://localhost` is fine. `https://…` is
 fine. `http://192.168.1.20:3000` from your phone is **not** — the app will work, but the service
 worker will not register and there will be no offline caching.
 
-Practical options, easiest first:
+Practical options. On Android there is a way to sidestep the rule completely — build the APK
+(§10.6), which has no origin and no server to get wrong. For everything else, easiest first:
 
 1. **Tailscale Serve** on the home server — gives you an HTTPS origin with a valid cert on phone and
    tablet with no port forwarding and no cert management.
@@ -863,10 +872,57 @@ Bullets → Backup exists precisely so a wiped browser profile is an inconvenien
 
 | Option | Command / tool | Notes |
 |---|---|---|
-| Tablet/phone only | copy `out/` or run `npm run start` locally | no network needed at all |
+| Android phone or tablet | `npm run apk` | no server, no network, no permissions; see §10.6 |
 | Home server, LAN | nginx / Caddy serving `out/` | add HTTPS if you want offline install |
 | Home server, remote | Tailscale Serve | HTTPS + no port forwarding |
 | Any static host | upload `out/` | the app never calls an API, so there is nothing to configure |
+
+### 10.6 The Android APK (Capacitor)
+
+The PWA route has a structural weakness for a field tool: it needs a secure context, which means it
+needs *a server and a connection on the day you install it* — the one thing you are trying to stop
+relying on. Capacitor removes that dependency by shipping `out/` inside the app package.
+
+**It is not a second codebase.** `webDir: "out"` in `capacitor.config.ts` points at the same folder
+the static host serves, so `next build` feeds both. The only native code is an empty
+`MainActivity extends BridgeActivity`.
+
+```
+next build  ->  out/  ->  cap sync android  ->  android/app/src/main/assets/public/
+                                                   ->  gradle assembleDebug  ->  APK
+```
+
+`scripts/build-apk.mjs` drives that and, because the Android toolchain is version-fussy, it locates a
+JDK 21+ and the SDK itself (a bare `java` on `PATH` is usually Java 8 and Gradle will not say so
+clearly) and writes `android/local.properties`. It runs Gradle through `gradle-wrapper.jar` rather
+than `gradlew`, which Node cannot spawn on Windows without a shell.
+
+Deliberate differences from the browser build:
+
+| | Browser | APK | Why |
+|---|---|---|---|
+| Service worker | registered | skipped when `Capacitor.isNativePlatform()` | every file is already local; a cache here can only serve stale content after an app update |
+| Header pill | `online` / `offline` | `on device` | Android WebView reports `navigator.onLine` unreliably — it said `online` in airplane mode, which is worse than saying nothing |
+| `INTERNET` permission | n/a | removed from `AndroidManifest.xml` | turns "works offline" from an observation into something the OS enforces; the app requests no permissions at all |
+| WebView debugging | n/a | off in release builds | no `webview_devtools_remote` socket on a release build |
+
+Detection is a property probe — `window.Capacitor?.isNativePlatform?.()` — rather than an import of
+`@capacitor/core`, so the browser bundle does not carry the native bridge to answer one question. It
+feeds `useSyncExternalStore` with a `false` server snapshot, which is the same hydration trick §8.3
+uses: the prerendered markup is identical to the browser build and React re-reads it on hydration.
+
+Verified on an API 36.1 emulator, debug and release builds both:
+
+- cold start in airplane mode renders the calculator (147 text nodes via `uiautomator dump` on the
+  release build, where DevTools is unavailable);
+- a range change written to `localStorage` survives a force-stop and relaunch while still offline;
+- tab navigation is client-side, not a document reload;
+- `dumpsys package` reports no requested permissions.
+
+**Signing.** `assembleRelease` signs with `android/release.keystore` when `android/keystore.properties`
+exists; otherwise it falls back to the debug key so the build is still installable. Both are
+gitignored. A debug-signed install cannot be upgraded to a release-signed one — Android rejects the
+signature change, and uninstalling it wipes `localStorage`. Export before switching.
 
 ---
 
